@@ -6,7 +6,9 @@ from typing import Optional
 import click
 import requests
 
-from covergen.collage import CollageConfig, generate_collage
+from PIL import Image
+
+from covergen.collage import CollageConfig, generate_collage, resize_to_max_height
 from covergen.cover_fetcher import (
     DEFAULT_CACHE_DIR,
     _get_cache_key,
@@ -214,6 +216,101 @@ def cache_add(
     cache_path.write_bytes(image_data)
     click.echo(f"Saved to: {cache_path}")
     click.echo("Done! The cover will be used next time you generate a collage.")
+
+
+@cli.command('export-thumbnails')
+@click.argument('input_file', type=click.Path(exists=True, path_type=Path))
+@click.option('-o', '--output-dir', type=click.Path(path_type=Path),
+              default=Path('thumbnails'), help='Output directory for thumbnails')
+@click.option('--year', type=int, default=None,
+              help='Filter to books finished in this year')
+@click.option('--max-height', type=int, default=600,
+              help='Maximum height in pixels (width scales proportionally)')
+@click.option('--format', 'output_format', type=click.Choice(['jpg', 'png']),
+              default='jpg', help='Output image format')
+@click.option('--quality', type=int, default=90,
+              help='JPEG quality (1-100, ignored for PNG)')
+def export_thumbnails(
+    input_file: Path,
+    output_dir: Path,
+    year: Optional[int],
+    max_height: int,
+    output_format: str,
+    quality: int,
+):
+    """Export individual book cover thumbnails for blog use.
+
+    Resizes covers to a maximum height while maintaining aspect ratio.
+    Useful for embedding individual book images in blog posts.
+
+    Examples:
+
+        # Export all covers to thumbnails/ directory:
+        python -m covergen export-thumbnails goodreads.csv
+
+        # Export 2024 books with custom height:
+        python -m covergen export-thumbnails goodreads.csv --year 2024 --max-height 400
+
+        # Export to a specific directory:
+        python -m covergen export-thumbnails goodreads.csv -o ~/blog/images/books
+    """
+    # Parse CSV
+    click.echo(f"Reading {input_file}...")
+    books = parse_goodreads_csv(input_file, year=year)
+
+    if not books:
+        if year:
+            click.echo(f"No books found for year {year}.", err=True)
+        else:
+            click.echo("No books found in CSV.", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"Found {len(books)} books" + (f" from {year}" if year else ""))
+
+    # Fetch covers (uses cache)
+    click.echo(f"Fetching {len(books)} book covers...")
+
+    def progress_callback(completed, total):
+        click.echo(f"\r  Downloaded {completed}/{total} covers", nl=False)
+
+    results = fetch_covers_for_books(books, progress_callback=progress_callback)
+    click.echo()  # Newline after progress
+
+    # Create output directory
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Export each cover
+    exported = 0
+    skipped = 0
+    for book, cover_path in results:
+        if cover_path is None:
+            skipped += 1
+            continue
+
+        try:
+            with Image.open(cover_path) as img:
+                resized = resize_to_max_height(img, max_height)
+
+                # Generate filename using same logic as cache
+                filename = sanitize_filename(book.title)
+                if book.best_isbn:
+                    filename = f"{book.best_isbn}-{filename}"
+
+                output_path = output_dir / f"{filename}.{output_format}"
+
+                if output_format == 'jpg':
+                    resized.save(output_path, 'JPEG', quality=quality)
+                else:
+                    resized.save(output_path, 'PNG')
+
+                exported += 1
+        except Exception as e:
+            click.echo(f"Warning: Failed to export {book.title}: {e}", err=True)
+            skipped += 1
+
+    click.echo(f"Exported {exported} thumbnails to {output_dir}/")
+    if skipped:
+        click.echo(f"Skipped {skipped} books (no cover available)")
 
 
 def main():

@@ -1,0 +1,28 @@
+# Cover cache
+covers_cache/
+
+# Claude Code
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# Output files
+*.png
+*.jpg
+!sample_output/

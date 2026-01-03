@@ -31,11 +31,14 @@ covergen/
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the tool
-python -m covergen <input.csv> --year 2024 -o output.png
+# Generate a collage
+python -m covergen generate <input.csv> --year 2024 -o output.png
 
-# Run with styling
-python -m covergen <input.csv> --year 2024 -o output.png --background "#1a1a2e" --columns 7
+# Generate with styling
+python -m covergen generate <input.csv> --year 2024 -o output.png --background "#1a1a2e" --columns 7
+
+# Manually add a missing cover
+python -m covergen cache-add --title "Book Title" --author "Author Name" --url "https://..."
 ```
 
 ## Cover Fetching Logic
@@ -53,7 +56,7 @@ Covers are cached in `covers_cache/` (gitignored). Images smaller than 200x200px
 
 ## Common Issues
 
-- **Missing covers**: Some books (Audible Originals, very new releases) aren't in Open Library or Google Books. Users can manually add covers to `covers_cache/`.
+- **Missing covers**: Some books (Audible Originals, very new releases) aren't in Open Library or Google Books. Use `cache-add` command to manually add covers.
 - **Small/placeholder images**: The tool rejects images < 200px as likely placeholders.
 
 ## Output Specifications

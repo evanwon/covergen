@@ -4,13 +4,23 @@ from pathlib import Path
 from typing import Optional
 
 import click
+import requests
 
 from covergen.collage import CollageConfig, generate_collage
-from covergen.cover_fetcher import fetch_covers_for_books
+from covergen.cover_fetcher import DEFAULT_CACHE_DIR, _get_cache_key, fetch_covers_for_books
 from covergen.csv_parser import parse_goodreads_csv
 
 
-@click.command()
+@click.group(invoke_without_command=True)
+@click.pass_context
+def cli(ctx):
+    """Generate book cover collages from Goodreads CSV exports."""
+    # If no subcommand is given, show help
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@cli.command('generate')
 @click.argument('input_file', type=click.Path(exists=True, path_type=Path))
 @click.option('-o', '--output', 'output_file', type=click.Path(path_type=Path),
               default=Path('collage.png'), help='Output image path')
@@ -116,6 +126,94 @@ def main(
         click.echo("Try deleting these from covers_cache/ and re-running.", err=True)
 
     click.echo(f"Collage saved to: {output_path}")
+
+
+@cli.command('cache-add')
+@click.option('--title', required=True, help='Book title (must match CSV exactly)')
+@click.option('--author', required=True, help='Book author (must match CSV exactly)')
+@click.option('--isbn', default=None, help='ISBN (if the book has one)')
+@click.option('--url', default=None, help='URL to download cover image from')
+@click.option('--file', 'file_path', type=click.Path(exists=True, path_type=Path),
+              default=None, help='Local file path to use as cover')
+@click.option('--cache-dir', type=click.Path(path_type=Path),
+              default=DEFAULT_CACHE_DIR, help='Cache directory')
+def cache_add(
+    title: str,
+    author: str,
+    isbn: Optional[str],
+    url: Optional[str],
+    file_path: Optional[Path],
+    cache_dir: Path,
+):
+    """Manually add a cover image to the cache.
+
+    Use this for books where automatic fetching fails. The title and author
+    must match exactly how they appear in your Goodreads CSV.
+
+    Examples:
+
+        # Add from URL:
+        python -m covergen cache-add --title "The Debutante" --author "Jon Ronson" \\
+            --url "https://example.com/cover.jpg"
+
+        # Add from local file:
+        python -m covergen cache-add --title "The Debutante" --author "Jon Ronson" \\
+            --file ~/Downloads/cover.jpg
+
+        # Add with ISBN (uses ISBN as cache key instead of hash):
+        python -m covergen cache-add --title "Some Book" --author "Some Author" \\
+            --isbn "9780123456789" --url "https://example.com/cover.jpg"
+    """
+    if not url and not file_path:
+        raise click.UsageError("Either --url or --file must be provided")
+
+    if url and file_path:
+        raise click.UsageError("Cannot specify both --url and --file")
+
+    # Generate cache key (same logic as cover_fetcher)
+    cache_key = _get_cache_key(isbn=isbn, title=title, author=author)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = cache_dir / f"{cache_key}.jpg"
+
+    click.echo(f"Book: {title} by {author}")
+    click.echo(f"Cache key: {cache_key}")
+
+    if url:
+        # Download from URL
+        click.echo(f"Downloading from: {url}")
+        try:
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            image_data = response.content
+        except requests.RequestException as e:
+            raise click.ClickException(f"Failed to download image: {e}")
+    else:
+        # Read from local file
+        click.echo(f"Reading from: {file_path}")
+        image_data = file_path.read_bytes()
+
+    # Validate it's a valid image
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+        with Image.open(BytesIO(image_data)) as img:
+            width, height = img.size
+            click.echo(f"Image size: {width}x{height}")
+            if width < 200 or height < 200:
+                click.echo("Warning: Image is smaller than 200x200px, may appear low quality")
+    except Exception as e:
+        raise click.ClickException(f"Invalid image file: {e}")
+
+    # Save to cache
+    cache_path.write_bytes(image_data)
+    click.echo(f"Saved to: {cache_path}")
+    click.echo("Done! The cover will be used next time you generate a collage.")
+
+
+def main():
+    """Entry point for the CLI."""
+    cli()
 
 
 if __name__ == '__main__':

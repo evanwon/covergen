@@ -14,13 +14,13 @@ pip install -r requirements.txt
 
 ```bash
 # Generate collage for books read in 2024
-python -m covergen goodreads_library_export.csv --year 2024 -o 2024-reading.png
+python -m covergen generate goodreads_library_export.csv --year 2024 -o 2024-reading.png
 ```
 
 ### With Styling Options
 
 ```bash
-python -m covergen goodreads_library_export.csv --year 2024 -o 2024-reading.png \
+python -m covergen generate goodreads_library_export.csv --year 2024 -o 2024-reading.png \
   --background "#1a1a2e" \
   --columns 7 \
   --padding 20
@@ -29,7 +29,7 @@ python -m covergen goodreads_library_export.csv --year 2024 -o 2024-reading.png 
 ### With Title Overlay
 
 ```bash
-python -m covergen goodreads_library_export.csv --year 2024 -o 2024-reading.png \
+python -m covergen generate goodreads_library_export.csv --year 2024 -o 2024-reading.png \
   --title "2024: My Year in Reading" \
   --title-color "#ffffff" \
   --background "#1a1a2e"
@@ -61,10 +61,10 @@ The output format is auto-detected from the file extension:
 
 ```bash
 # Recommended: Use JPG for smaller file sizes (typically 200-500KB vs 3-5MB)
-python -m covergen books.csv --year 2024 -o 2024-reading.jpg
+python -m covergen generate books.csv --year 2024 -o 2024-reading.jpg
 
 # PNG if you need lossless
-python -m covergen books.csv --year 2024 -o 2024-reading.png
+python -m covergen generate books.csv --year 2024 -o 2024-reading.png
 ```
 
 ## Exporting from Goodreads
@@ -77,53 +77,39 @@ python -m covergen books.csv --year 2024 -o 2024-reading.png
 
 ## Manually Adding Missing Covers
 
-Some books may not have covers available through Open Library or Google Books APIs (e.g., Audible Originals, very new releases, or obscure titles). Missing covers appear as placeholders showing the book title and author, making it easy to identify which books need manual intervention.
+Some books may not have covers available through Open Library or Google Books APIs (e.g., Audible Originals, very new releases, or obscure titles). Missing covers appear as placeholders showing the book title and author.
 
-### Process
+Use the `cache-add` command to manually add covers:
 
-1. **Run the tool first** to identify which covers are missing:
-   ```bash
-   python -m covergen your_export.csv --year 2024 -o output.png
-   ```
-   The tool will list any books where covers couldn't be found, and the output image will show placeholders with book titles.
+```bash
+# Add from a URL
+python -m covergen cache-add \
+  --title "The Debutante" \
+  --author "Jon Ronson" \
+  --url "https://example.com/cover.jpg"
 
-2. **Find the book's ISBN** in your Goodreads export CSV:
-   - Open the CSV in a spreadsheet application
-   - Find the book by title
-   - Note the `ISBN13` column value (e.g., `9780593446591`)
+# Add from a local file
+python -m covergen cache-add \
+  --title "The Debutante" \
+  --author "Jon Ronson" \
+  --file ~/Downloads/cover.jpg
 
-3. **Download a cover image**:
-   - Search for the book cover on the publisher's website, Amazon, or Audible
-   - Save the image (right-click → Save Image As)
-   - Recommended: at least 300px wide for good quality
+# If the book has an ISBN (uses ISBN as cache key)
+python -m covergen cache-add \
+  --title "Some Book" \
+  --author "Some Author" \
+  --isbn "9780593446591" \
+  --url "https://example.com/cover.jpg"
+```
 
-4. **Add to the cache**:
-   - Rename the image to match the ISBN: `{ISBN13}.jpg`
-   - Place it in the `covers_cache/` folder
+**Important:** The `--title` and `--author` values must match exactly how they appear in your Goodreads CSV export.
 
-   Example:
-   ```
-   covers_cache/9780593446591.jpg
-   ```
+The command will:
+- Download/copy the image to the cache with the correct filename
+- Validate that it's a valid image file
+- Warn if the image is smaller than 200x200px
 
-5. **For books without ISBN** (shows as hash in cache):
-   - The tool uses a hash of `{title}-{author}` for caching
-   - Run with `--verbose` or check the warning output to see the title
-   - You can name the file using the ISBN if you look it up, or use the existing hash pattern
-
-6. **Re-run the tool** - it will use your manually added cover:
-   ```bash
-   python -m covergen your_export.csv --year 2024 -o output.png
-   ```
-
-### Example: Adding an Audible Original
-
-For "The Debutante" by Jon Ronson (an Audible Original):
-
-1. Find the ISBN: `9780593446591` (from Goodreads CSV)
-2. Go to Audible and find the book cover image
-3. Save as `covers_cache/9780593446591.jpg`
-4. Re-run the collage generator
+After adding the cover, re-run the `generate` command and it will use your manually added cover.
 
 ## How It Works
 

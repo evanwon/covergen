@@ -218,6 +218,53 @@ def cache_add(
     click.echo("Done! The cover will be used next time you generate a collage.")
 
 
+@cli.command('clear-cache')
+@click.option('--cache-dir', type=click.Path(path_type=Path),
+              default=DEFAULT_CACHE_DIR, help='Cache directory')
+@click.option('--dry-run', is_flag=True,
+              help='Show what would be deleted without actually deleting')
+@click.confirmation_option(prompt='Are you sure you want to clear the cache?')
+def clear_cache(cache_dir: Path, dry_run: bool):
+    """Clear all cached cover images.
+
+    This removes all downloaded cover images from the cache directory.
+    Use --dry-run to see what would be deleted without actually deleting.
+
+    Examples:
+
+        # Clear the cache:
+        python -m covergen clear-cache
+
+        # Preview what would be deleted:
+        python -m covergen clear-cache --dry-run
+    """
+    if not cache_dir.exists():
+        click.echo("Cache directory does not exist. Nothing to clear.")
+        return
+
+    # Find all image files in cache
+    image_files = list(cache_dir.glob("*.jpg")) + list(cache_dir.glob("*.png"))
+
+    if not image_files:
+        click.echo("Cache is already empty.")
+        return
+
+    # Calculate total size
+    total_size = sum(f.stat().st_size for f in image_files)
+    size_mb = total_size / (1024 * 1024)
+
+    if dry_run:
+        click.echo(f"Would delete {len(image_files)} cached image(s) ({size_mb:.2f} MB):")
+        for f in image_files[:10]:
+            click.echo(f"  - {f.name}")
+        if len(image_files) > 10:
+            click.echo(f"  ... and {len(image_files) - 10} more")
+    else:
+        for f in image_files:
+            f.unlink()
+        click.echo(f"Deleted {len(image_files)} cached image(s) ({size_mb:.2f} MB)")
+
+
 @cli.command('export-thumbnails')
 @click.argument('input_file', type=click.Path(exists=True, path_type=Path))
 @click.option('-o', '--output-dir', type=click.Path(path_type=Path),

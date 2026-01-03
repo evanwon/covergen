@@ -25,4 +25,4 @@ env/
 # Output files
 *.png
 *.jpg
-!sample_output/
+!output/

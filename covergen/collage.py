@@ -222,6 +222,26 @@ def generate_collage(
     return output_path, failed_to_load
 
 
+def resize_to_max_height(image: Image.Image, max_height: int) -> Image.Image:
+    """
+    Resize image to fit within max_height while maintaining aspect ratio.
+
+    Only resizes if the image is taller than max_height.
+    Returns the image at original size if already smaller.
+    """
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+
+    width, height = image.size
+    if height <= max_height:
+        return image
+
+    ratio = max_height / height
+    new_width = int(width * ratio)
+
+    return image.resize((new_width, max_height), Image.Resampling.LANCZOS)
+
+
 def resize_and_crop(image: Image.Image, target_width: int, target_height: int) -> Image.Image:
     """
     Resize and crop an image to fit exact dimensions.

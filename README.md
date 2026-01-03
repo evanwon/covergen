@@ -111,6 +111,33 @@ The command will:
 
 After adding the cover, re-run the `generate` command and it will use your manually added cover.
 
+## Exporting Individual Thumbnails
+
+For blog posts where you want individual book cover images alongside your reviews, use the `export-thumbnails` command:
+
+```bash
+# Export thumbnails for 2024 books (default max height: 600px)
+python -m covergen export-thumbnails goodreads.csv --year 2024 -o covers-2024/
+
+# Custom max height
+python -m covergen export-thumbnails goodreads.csv --year 2024 --max-height 400
+
+# PNG format instead of JPEG
+python -m covergen export-thumbnails goodreads.csv --year 2024 --format png
+```
+
+### Thumbnail Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-o, --output-dir` | Output directory | `thumbnails` |
+| `--year` | Filter to books finished in this year | (all books) |
+| `--max-height` | Maximum height in pixels (width scales proportionally) | `600` |
+| `--format` | Output format (`jpg` or `png`) | `jpg` |
+| `--quality` | JPEG quality (1-100) | `90` |
+
+Thumbnails are named using the format `{isbn}-{title}.jpg` (e.g., `9780593135204-the-great-gatsby.jpg`) for easy browsing.
+
 ## How It Works
 
 The tool tries multiple sources to find book covers:
@@ -118,4 +145,4 @@ The tool tries multiple sources to find book covers:
 1. **Open Library** - Uses ISBN to fetch covers (free, no API key)
 2. **Google Books** - Falls back to ISBN search, then title+author search
 
-Covers are cached in `covers_cache/` to avoid re-downloading on subsequent runs.
+Covers are cached in `covers_cache/` to avoid re-downloading on subsequent runs. Both `generate` and `export-thumbnails` share the same cache, so running both commands only downloads each cover once.

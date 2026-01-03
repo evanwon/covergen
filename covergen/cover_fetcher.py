@@ -2,6 +2,7 @@
 
 import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from io import BytesIO
 from pathlib import Path
 from typing import Optional
 
@@ -43,8 +44,13 @@ def _is_placeholder_image(img: Image.Image) -> bool:
     return len(unique_colors) < 15
 
 
-def _fetch_from_open_library(isbn: str) -> Optional[bytes]:
-    """Try to fetch cover from Open Library."""
+def _fetch_from_open_library(isbn: str, min_size: int = 200) -> Optional[bytes]:
+    """Try to fetch cover from Open Library.
+
+    Args:
+        isbn: The ISBN to look up
+        min_size: Minimum width/height in pixels (images smaller than this are rejected)
+    """
     # First, check if Open Library has a cover for this ISBN via their Books API
     # This avoids downloading placeholder images
     try:
@@ -71,6 +77,11 @@ def _fetch_from_open_library(isbn: str) -> Optional[bytes]:
         img_response = requests.get(cover_url, timeout=10)
         img_response.raise_for_status()
         if len(img_response.content) > 1000:
+            # Validate image dimensions before returning
+            # Open Library sometimes returns small thumbnails even for "-L.jpg" URLs
+            with Image.open(BytesIO(img_response.content)) as img:
+                if img.size[0] < min_size or img.size[1] < min_size:
+                    return None  # Too small, let caller try other sources
             return img_response.content
 
     except Exception:
@@ -78,59 +89,96 @@ def _fetch_from_open_library(isbn: str) -> Optional[bytes]:
     return None
 
 
-def _fetch_from_google_books(isbn: str = None, title: str = None, author: str = None) -> Optional[bytes]:
-    """Try to fetch cover from Google Books API."""
-    try:
-        # Build search query
-        if isbn:
-            search_url = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}"
-        elif title:
-            # Search by title and author
-            query = f'intitle:"{title}"'
-            if author:
-                query += f'+inauthor:"{author}"'
-            search_url = f"https://www.googleapis.com/books/v1/volumes?q={requests.utils.quote(query)}"
-        else:
-            return None
+def _fetch_from_google_books(
+    isbn: str = None,
+    title: str = None,
+    author: str = None,
+    min_size: int = 200
+) -> Optional[bytes]:
+    """Try to fetch cover from Google Books API.
 
-        response = requests.get(search_url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+    Args:
+        isbn: ISBN to search for (tried first if provided)
+        title: Book title (used if ISBN fails or not provided)
+        author: Book author (used with title)
+        min_size: Minimum image dimension in pixels
 
-        if data.get("totalItems", 0) == 0:
-            return None
+    Returns:
+        Image bytes if a valid cover is found, None otherwise.
+    """
+    def try_search(search_url: str) -> Optional[bytes]:
+        """Try a Google Books search and return valid cover image bytes."""
+        try:
+            response = requests.get(search_url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
 
-        # Get the first result's image links
-        volume_info = data["items"][0].get("volumeInfo", {})
-        image_links = volume_info.get("imageLinks", {})
+            if data.get("totalItems", 0) == 0:
+                return None
 
-        # Prefer larger images
-        image_url = (
-            image_links.get("extraLarge") or
-            image_links.get("large") or
-            image_links.get("medium") or
-            image_links.get("thumbnail") or
-            image_links.get("smallThumbnail")
-        )
+            # Try multiple results in case first ones are placeholders
+            for item in data.get("items", [])[:5]:
+                volume_info = item.get("volumeInfo", {})
+                image_links = volume_info.get("imageLinks", {})
 
-        if not image_url:
-            return None
+                # Prefer larger images
+                image_url = (
+                    image_links.get("extraLarge") or
+                    image_links.get("large") or
+                    image_links.get("medium") or
+                    image_links.get("thumbnail") or
+                    image_links.get("smallThumbnail")
+                )
 
-        # Google Books uses http, upgrade to https and remove zoom limit
-        image_url = image_url.replace("http://", "https://")
-        image_url = image_url.replace("&edge=curl", "")  # Remove curl effect
-        # Try to get a larger image by modifying zoom parameter
-        if "zoom=1" in image_url:
-            image_url = image_url.replace("zoom=1", "zoom=3")
+                if not image_url:
+                    continue
 
-        img_response = requests.get(image_url, timeout=10)
-        img_response.raise_for_status()
+                # Google Books uses http, upgrade to https and remove zoom limit
+                image_url = image_url.replace("http://", "https://")
+                image_url = image_url.replace("&edge=curl", "")  # Remove curl effect
+                # Try to get a larger image by modifying zoom parameter
+                if "zoom=1" in image_url:
+                    image_url = image_url.replace("zoom=1", "zoom=3")
 
-        if len(img_response.content) > 1000:
-            return img_response.content
+                try:
+                    img_response = requests.get(image_url, timeout=10)
+                    img_response.raise_for_status()
 
-    except Exception:
-        pass
+                    if len(img_response.content) <= 1000:
+                        continue
+
+                    # Validate image is not a placeholder
+                    with Image.open(BytesIO(img_response.content)) as img:
+                        # Check size
+                        if img.size[0] < min_size or img.size[1] < min_size:
+                            continue
+                        # Check for placeholder (low color count)
+                        if _is_placeholder_image(img):
+                            continue
+
+                    return img_response.content
+                except Exception:
+                    continue
+
+        except Exception:
+            pass
+        return None
+
+    # Try ISBN search first if provided
+    if isbn:
+        search_url = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}"
+        result = try_search(search_url)
+        if result:
+            return result
+
+    # Fall back to title/author search
+    if title:
+        query = f'intitle:"{title}"'
+        if author:
+            query += f'+inauthor:"{author}"'
+        search_url = f"https://www.googleapis.com/books/v1/volumes?q={requests.utils.quote(query)}"
+        return try_search(search_url)
+
     return None
 
 

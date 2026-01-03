@@ -39,6 +39,12 @@ python -m covergen generate <input.csv> --year 2024 -o output.png --background "
 
 # Manually add a missing cover
 python -m covergen cache-add --title "Book Title" --author "Author Name" --url "https://..."
+
+# Export individual thumbnails (for blog post inline images)
+python -m covergen export-thumbnails <input.csv> --year 2024 -o thumbnails/
+
+# Export with custom max height
+python -m covergen export-thumbnails <input.csv> --year 2024 --max-height 400
 ```
 
 ## Cover Fetching Logic
@@ -51,7 +57,7 @@ Covers are cached in `covers_cache/` (gitignored). Images smaller than 200x200px
 
 ## Cache Filenames
 
-- Books with ISBN: `{ISBN13}.jpg` (e.g., `9780593135204.jpg`)
+- Books with ISBN: `{ISBN13}-{sanitized-title}.jpg` (e.g., `9780593135204-the-great-gatsby.jpg`)
 - Books without ISBN: MD5 hash of `{title}-{author}` truncated to 16 chars (e.g., `3f75a3ae5859896e.jpg`)
 
 ## Common Issues

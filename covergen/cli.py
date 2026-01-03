@@ -7,7 +7,12 @@ import click
 import requests
 
 from covergen.collage import CollageConfig, generate_collage
-from covergen.cover_fetcher import DEFAULT_CACHE_DIR, _get_cache_key, fetch_covers_for_books
+from covergen.cover_fetcher import (
+    DEFAULT_CACHE_DIR,
+    _get_cache_key,
+    fetch_covers_for_books,
+    sanitize_filename,
+)
 from covergen.csv_parser import parse_goodreads_csv
 
 

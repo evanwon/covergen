@@ -1,6 +1,7 @@
 """Fetch book covers from multiple APIs."""
 
 import hashlib
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 from pathlib import Path
@@ -14,6 +15,29 @@ from covergen.csv_parser import Book
 
 # Default cache directory
 DEFAULT_CACHE_DIR = Path(__file__).parent.parent / "covers_cache"
+
+
+def sanitize_filename(title: str, max_length: int = 60) -> str:
+    """
+    Generate a filesystem-safe filename from a book title.
+
+    Removes special characters, replaces spaces with hyphens,
+    and truncates to max_length.
+    """
+    # Remove characters that are problematic on Windows/Unix filesystems
+    clean = re.sub(r'[/\\:*?"<>|]', '', title)
+    # Replace spaces and multiple whitespace with single hyphen
+    clean = re.sub(r'\s+', '-', clean)
+    # Collapse multiple hyphens
+    clean = re.sub(r'-+', '-', clean)
+    # Remove leading/trailing hyphens
+    clean = clean.strip('-')
+    # Lowercase for consistency
+    clean = clean.lower()
+    # Truncate if needed (avoid cutting in middle of a word if possible)
+    if len(clean) > max_length:
+        clean = clean[:max_length].rstrip('-')
+    return clean
 
 
 def _is_placeholder_image(img: Image.Image) -> bool:
@@ -183,8 +207,17 @@ def _fetch_from_google_books(
 
 
 def _get_cache_key(isbn: str = None, title: str = None, author: str = None) -> str:
-    """Generate a cache key from ISBN or title+author."""
+    """
+    Generate a cache key from ISBN and/or title.
+
+    Format:
+    - With ISBN: "{isbn}-{sanitized-title}" (e.g., "9780743273565-the-great-gatsby")
+    - Without ISBN: "{hash}" (MD5 hash of title+author, truncated to 16 chars)
+    """
     if isbn:
+        if title:
+            sanitized = sanitize_filename(title, max_length=50)
+            return f"{isbn}-{sanitized}"
         return isbn
     # Use a hash of title+author for non-ISBN lookups
     key = f"{title or ''}-{author or ''}"

@@ -281,13 +281,13 @@ def export_thumbnails(
 
     # Export each cover
     exported = 0
-    skipped = 0
+    skipped_books = []
     small_images = []
     warn_threshold = int(max_height * 2 / 3)  # Warn if less than 2/3 of requested height
 
     for book, cover_path in results:
         if cover_path is None:
-            skipped += 1
+            skipped_books.append((book, "no cover available"))
             continue
 
         try:
@@ -312,12 +312,13 @@ def export_thumbnails(
 
                 exported += 1
         except Exception as e:
-            click.echo(f"Warning: Failed to export {book.title}: {e}", err=True)
-            skipped += 1
+            skipped_books.append((book, str(e)))
 
     click.echo(f"Exported {exported} thumbnails to {output_dir}/")
-    if skipped:
-        click.echo(f"Skipped {skipped} books (no cover available)")
+    if skipped_books:
+        click.echo(f"Skipped {len(skipped_books)} books:")
+        for book, reason in skipped_books:
+            click.echo(f"  - {book.title} by {book.author}: {reason}")
     if small_images:
         click.echo(f"Warning: {len(small_images)} image(s) smaller than {warn_threshold}px height:")
         for book, height in small_images[:5]:

@@ -77,7 +77,7 @@ python -m covergen books.csv --year 2024 -o 2024-reading.png
 
 ## Manually Adding Missing Covers
 
-Some books may not have covers available through Open Library or Google Books APIs (e.g., Audible Originals, very new releases, or obscure titles). You can manually add covers for these books.
+Some books may not have covers available through Open Library or Google Books APIs (e.g., Audible Originals, very new releases, or obscure titles). Missing covers appear as placeholders showing the book title and author, making it easy to identify which books need manual intervention.
 
 ### Process
 
@@ -85,7 +85,7 @@ Some books may not have covers available through Open Library or Google Books AP
    ```bash
    python -m covergen your_export.csv --year 2024 -o output.png
    ```
-   The tool will list any books where covers couldn't be found.
+   The tool will list any books where covers couldn't be found, and the output image will show placeholders with book titles.
 
 2. **Find the book's ISBN** in your Goodreads export CSV:
    - Open the CSV in a spreadsheet application

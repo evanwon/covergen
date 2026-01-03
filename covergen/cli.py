@@ -75,22 +75,18 @@ def main(
     results = fetch_covers_for_books(books, progress_callback=progress_callback)
     click.echo()  # Newline after progress
 
-    # Filter to only books with covers
-    cover_paths = [path for book, path in results if path is not None]
+    # Report cover fetch results
+    found_covers = [(book, path) for book, path in results if path is not None]
     missing_covers = [(book, path) for book, path in results if path is None]
 
     if missing_covers:
-        click.echo(f"Warning: {len(missing_covers)} cover(s) not found:")
+        click.echo(f"Warning: {len(missing_covers)} cover(s) not found (will show as placeholders):")
         for book, _ in missing_covers[:5]:
             click.echo(f"  - {book.title} by {book.author}")
         if len(missing_covers) > 5:
             click.echo(f"  ... and {len(missing_covers) - 5} more")
 
-    if not cover_paths:
-        click.echo("No covers could be fetched. Cannot generate collage.", err=True)
-        raise SystemExit(1)
-
-    click.echo(f"Successfully fetched {len(cover_paths)} covers")
+    click.echo(f"Successfully fetched {len(found_covers)} covers")
 
     # Generate collage
     click.echo("Generating collage...")
@@ -108,7 +104,17 @@ def main(
         title_size=title_size,
     )
 
-    output_path = generate_collage(cover_paths, config, output_file)
+    output_path, failed_to_load = generate_collage(results, config, output_file)
+
+    # Report any images that failed to load (file exists but couldn't be opened)
+    if failed_to_load:
+        click.echo(f"Error: {len(failed_to_load)} cached image(s) failed to load:", err=True)
+        for book in failed_to_load[:5]:
+            click.echo(f"  - {book.title} by {book.author}", err=True)
+        if len(failed_to_load) > 5:
+            click.echo(f"  ... and {len(failed_to_load) - 5} more", err=True)
+        click.echo("Try deleting these from covers_cache/ and re-running.", err=True)
+
     click.echo(f"Collage saved to: {output_path}")
 
 

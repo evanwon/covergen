@@ -1,11 +1,17 @@
 """Generate book cover collage images."""
 
+from __future__ import annotations
+
 import math
+import textwrap
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from PIL import Image, ImageDraw, ImageFont
+
+if TYPE_CHECKING:
+    from covergen.csv_parser import Book
 
 
 @dataclass
@@ -33,27 +39,99 @@ def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
 
+def create_placeholder(
+    book: Book,
+    width: int,
+    height: int,
+    bg_color: tuple[int, int, int]
+) -> Image.Image:
+    """
+    Create a placeholder image for a missing book cover.
+
+    Shows the book title and author on a slightly darker background.
+    """
+    # Create a slightly darker shade for the placeholder
+    darker = tuple(max(0, c - 30) for c in bg_color)
+    placeholder = Image.new('RGB', (width, height), darker)
+    draw = ImageDraw.Draw(placeholder)
+
+    # Try to load a font, with fallbacks
+    font_size = max(12, width // 10)
+    small_font_size = max(10, width // 14)
+    try:
+        font = ImageFont.truetype("arial.ttf", font_size)
+        small_font = ImageFont.truetype("arial.ttf", small_font_size)
+    except OSError:
+        try:
+            font = ImageFont.truetype("DejaVuSans.ttf", font_size)
+            small_font = ImageFont.truetype("DejaVuSans.ttf", small_font_size)
+        except OSError:
+            font = ImageFont.load_default()
+            small_font = font
+
+    # Choose text color (light if background is dark, dark if light)
+    luminance = (0.299 * bg_color[0] + 0.587 * bg_color[1] + 0.114 * bg_color[2])
+    text_color = (60, 60, 60) if luminance > 128 else (200, 200, 200)
+
+    # Wrap title text to fit
+    max_chars = max(10, width // (font_size // 2))
+    wrapped_title = textwrap.fill(book.title, width=max_chars)
+    wrapped_author = textwrap.fill(book.author, width=max_chars)
+
+    # Calculate text positioning
+    padding = width // 10
+
+    # Draw title
+    title_bbox = draw.multiline_textbbox((0, 0), wrapped_title, font=font)
+    title_height = title_bbox[3] - title_bbox[1]
+
+    author_bbox = draw.multiline_textbbox((0, 0), wrapped_author, font=small_font)
+    author_height = author_bbox[3] - author_bbox[1]
+
+    total_text_height = title_height + author_height + padding
+    start_y = (height - total_text_height) // 2
+
+    # Draw title centered
+    draw.multiline_text(
+        (padding, start_y),
+        wrapped_title,
+        fill=text_color,
+        font=font
+    )
+
+    # Draw author below title
+    draw.multiline_text(
+        (padding, start_y + title_height + padding),
+        wrapped_author,
+        fill=text_color,
+        font=small_font
+    )
+
+    return placeholder
+
+
 def generate_collage(
-    cover_paths: list[Path],
+    books_with_covers: list[tuple[Book, Optional[Path]]],
     config: CollageConfig,
     output_path: Path
-) -> Path:
+) -> tuple[Path, list[Book]]:
     """
     Generate a collage image from book cover images.
 
     Args:
-        cover_paths: List of paths to cover images (in order)
+        books_with_covers: List of (Book, cover_path) tuples. Path is None for missing covers.
         config: Collage configuration
         output_path: Where to save the output image
 
     Returns:
-        Path to the generated image
+        Tuple of (output_path, failed_books) where failed_books is a list of
+        books whose cover images existed but failed to load.
     """
-    if not cover_paths:
-        raise ValueError("No cover images provided")
+    if not books_with_covers:
+        raise ValueError("No books provided")
 
     # Calculate dimensions
-    num_books = len(cover_paths)
+    num_books = len(books_with_covers)
     num_rows = math.ceil(num_books / config.columns)
 
     # Calculate cover dimensions
@@ -84,21 +162,28 @@ def generate_collage(
         grid_start_y = config.margin
 
     # Place covers
-    for idx, cover_path in enumerate(cover_paths):
+    failed_to_load: list[Book] = []
+    for idx, (book, cover_path) in enumerate(books_with_covers):
         row = idx // config.columns
         col = idx % config.columns
 
         x = config.margin + (col * (cover_width + config.padding))
         y = grid_start_y + (row * (cover_height + config.padding))
 
-        try:
-            with Image.open(cover_path) as cover:
-                # Resize cover maintaining aspect ratio, then crop to fit
-                cover_resized = resize_and_crop(cover, cover_width, cover_height)
-                canvas.paste(cover_resized, (x, y))
-        except Exception as e:
-            # If we can't load a cover, leave a blank space
-            pass
+        if cover_path is not None:
+            try:
+                with Image.open(cover_path) as cover:
+                    # Resize cover maintaining aspect ratio, then crop to fit
+                    cover_resized = resize_and_crop(cover, cover_width, cover_height)
+                    canvas.paste(cover_resized, (x, y))
+                continue
+            except Exception:
+                # Track books where image file exists but failed to load
+                failed_to_load.append(book)
+
+        # Create placeholder with book info
+        placeholder = create_placeholder(book, cover_width, cover_height, bg_color)
+        canvas.paste(placeholder, (x, y))
 
     # Add title if specified
     if config.title:
@@ -134,7 +219,7 @@ def generate_collage(
     else:
         canvas.save(output_path, 'PNG')
 
-    return output_path
+    return output_path, failed_to_load
 
 
 def resize_and_crop(image: Image.Image, target_width: int, target_height: int) -> Image.Image:

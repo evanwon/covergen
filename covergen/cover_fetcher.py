@@ -10,18 +10,69 @@ from PIL import Image
 
 from covergen.csv_parser import Book
 
+
 # Default cache directory
 DEFAULT_CACHE_DIR = Path(__file__).parent.parent / "covers_cache"
 
 
+def _is_placeholder_image(img: Image.Image) -> bool:
+    """
+    Detect "image not available" placeholder images from Google Books.
+
+    These placeholders are mostly solid gray/white with simple text,
+    resulting in very few unique colors compared to real book covers.
+    """
+    # Convert to RGB if needed
+    if img.mode != 'RGB':
+        img = img.convert('RGB')
+
+    # Sample pixels from the image
+    pixels = list(img.getdata())
+    sample_size = min(1000, len(pixels))
+    step = max(1, len(pixels) // sample_size)
+    sampled = pixels[::step]
+
+    # Count unique colors (quantized to reduce noise)
+    def quantize(pixel):
+        return (pixel[0] // 32, pixel[1] // 32, pixel[2] // 32)
+
+    unique_colors = set(quantize(p) for p in sampled)
+
+    # Placeholder images typically have < 15 unique quantized colors
+    # Real book covers usually have 50+ unique colors
+    return len(unique_colors) < 15
+
+
 def _fetch_from_open_library(isbn: str) -> Optional[bytes]:
     """Try to fetch cover from Open Library."""
-    url = f"https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
+    # First, check if Open Library has a cover for this ISBN via their Books API
+    # This avoids downloading placeholder images
     try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        if len(response.content) > 1000:
-            return response.content
+        api_url = f"https://openlibrary.org/api/books?bibkeys=ISBN:{isbn}&format=json&jscmd=data"
+        api_response = requests.get(api_url, timeout=10)
+        api_response.raise_for_status()
+        data = api_response.json()
+
+        # If no data returned, they don't have this book
+        book_key = f"ISBN:{isbn}"
+        if book_key not in data:
+            return None
+
+        # Check if cover info exists
+        book_data = data[book_key]
+        if "cover" not in book_data:
+            return None
+
+        # Use the large cover URL from API response (guaranteed to be real)
+        cover_url = book_data["cover"].get("large") or book_data["cover"].get("medium")
+        if not cover_url:
+            return None
+
+        img_response = requests.get(cover_url, timeout=10)
+        img_response.raise_for_status()
+        if len(img_response.content) > 1000:
+            return img_response.content
+
     except Exception:
         pass
     return None
@@ -118,11 +169,14 @@ def fetch_cover(
     if cache_path.exists():
         try:
             with Image.open(cache_path) as img:
-                # Require at least 200px wide (reject placeholders)
-                if img.size[0] >= 200 and img.size[1] >= 200:
-                    return cache_path
-                else:
+                # Reject small images
+                if img.size[0] < 200 or img.size[1] < 200:
                     cache_path.unlink()
+                # Reject "image not available" style placeholders
+                elif _is_placeholder_image(img):
+                    cache_path.unlink()
+                else:
+                    return cache_path
         except Exception:
             cache_path.unlink(missing_ok=True)
 
@@ -147,11 +201,15 @@ def fetch_cover(
     # Save to cache
     cache_path.write_bytes(image_data)
 
-    # Verify downloaded image - reject small/placeholder images
+    # Verify downloaded image - reject placeholder images
     try:
         with Image.open(cache_path) as img:
-            # Reject images smaller than 200px wide (likely placeholders)
+            # Reject images smaller than 200px
             if img.size[0] < 200 or img.size[1] < 200:
+                cache_path.unlink()
+                return None
+            # Reject "image not available" style placeholders (mostly from Google Books)
+            if _is_placeholder_image(img):
                 cache_path.unlink()
                 return None
     except Exception:

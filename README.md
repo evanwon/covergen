@@ -52,6 +52,21 @@ python -m covergen goodreads_library_export.csv --year 2024 -o 2024-reading.png 
 | `--title-position` | `top` or `bottom` | `top` |
 | `--title-size` | Font size | `48` |
 
+### Output Format
+
+The output format is auto-detected from the file extension:
+
+- **`.jpg` / `.jpeg`** - Saves as JPEG (quality 90). Recommended for web use—produces files 10-20x smaller than PNG with no visible quality loss.
+- **`.png`** - Saves as PNG (lossless). Use if you need transparency support or lossless quality.
+
+```bash
+# Recommended: Use JPG for smaller file sizes (typically 200-500KB vs 3-5MB)
+python -m covergen books.csv --year 2024 -o 2024-reading.jpg
+
+# PNG if you need lossless
+python -m covergen books.csv --year 2024 -o 2024-reading.png
+```
+
 ## Exporting from Goodreads
 
 1. Go to [Goodreads](https://www.goodreads.com) and sign in

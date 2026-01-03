@@ -62,3 +62,4 @@ Covers are cached in `covers_cache/` (gitignored). Images smaller than 200x200px
 - Default columns: 7
 - Book cover aspect ratio: 2:3 (width:height)
 - Height auto-calculated based on book count
+- Format auto-detected from extension: `.jpg`/`.jpeg` saves as JPEG (quality 90), otherwise PNG

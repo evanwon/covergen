@@ -127,9 +127,12 @@ def generate_collage(
 
         draw.text((text_x, text_y), config.title, fill=title_color, font=font)
 
-    # Save output
+    # Save output - auto-detect format from extension
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    canvas.save(output_path, quality=95)
+    if output_path.suffix.lower() in ('.jpg', '.jpeg'):
+        canvas.save(output_path, 'JPEG', quality=90)
+    else:
+        canvas.save(output_path, 'PNG')
 
     return output_path
 
